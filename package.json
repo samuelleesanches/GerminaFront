@@ -1,5 +1,5 @@
 {
-  "name": "openfront-client",
+  "name": "GerminaFront",
   "packageManager": "npm@12.1.0",
   "engines": {
     "node": ">=24.15.0 <25",
