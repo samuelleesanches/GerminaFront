@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "types": ["node", "vite/client", "vitest/globals"],
+    "noEmit": true
+  },
+  "include": ["src/**/*", "zbin/**/*", "cloudflare/**/*"],
+  "exclude": ["node_modules"]
+}

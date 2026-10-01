@@ -1,0 +1,337 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Instalação no Cloudflare — OpenFront</title><style>
+:root{color-scheme:light;font:16px/1.65 system-ui,sans-serif;color:#213547;background:#eef3f7}body{margin:0}main{max-width:980px;margin:28px auto;padding:36px 44px;background:#fff;border:1px solid #dce4eb;border-radius:14px}h1{font-size:2rem;line-height:1.25;color:#123752}h2{font-size:1.35rem;margin-top:2.1em;color:#123752}p{margin:1em 0}a{color:#0868a1;overflow-wrap:anywhere}pre{background:#142a3a;color:#e9f5ff;padding:18px;border-radius:8px;overflow:auto;font:14px/1.55 ui-monospace,monospace}code{font:0.9em ui-monospace,monospace}p code,li code,td code{background:#eef3f7;padding:2px 5px;border-radius:4px}table{border-collapse:collapse;width:100%;margin:20px 0;font-size:.92rem}td,th{border:1px solid #dce4eb;text-align:left;padding:10px;vertical-align:top}th{background:#eef5fa}li{margin:7px 0}footer{margin-top:40px;border-top:1px solid #dce4eb;padding-top:18px;color:#62798b;font-size:.85rem}@media(max-width:680px){main{margin:0;border:0;border-radius:0;padding:22px 18px}h1{font-size:1.65rem}table{display:block;overflow:auto}}@media print{:root{background:white;font-size:10pt}main{margin:0;padding:0;max-width:none;border:0}h2{break-after:avoid}pre{white-space:pre-wrap;overflow:visible;background:#eef3f7;color:#123752}tr,pre{break-inside:avoid}a{color:inherit}}
+</style></head><body><main><h1>Instalação no Cloudflare — OpenFront</h1>
+<p>Este pacote contém uma única pasta, <code>OpenFront-Cloudflare</code>, com frontend, backend, mapas, código-fonte, testes e arquivos de configuração. O frontend compilado fica em <code>static/</code>.</p>
+<h2>Uma pasta, dois projetos no Cloudflare</h2>
+<p>É possível entregar tudo em um ZIP e manter tudo no mesmo repositório. O multiplayer, porém, precisa de <strong>um projeto Worker e um projeto Pages</strong>.</p>
+<p>O Pages hospeda o site e uma pequena função que encaminha as chamadas ao backend. O Worker mantém o diretório de salas e um Durable Object por sala, com WebSockets e histórico persistente de turnos. A Cloudflare exige que as classes de Durable Objects sejam implantadas em um Worker: elas não podem ser criadas e implantadas no próprio projeto Pages.</p>
+<p>Os jogadores acessam somente o endereço do Pages. O binding <code>BACKEND</code> liga os dois projetos internamente. Não é necessário colocar a URL pública do Worker no JavaScript do navegador.</p>
+<table>
+<thead>
+<tr>
+<th>Parte</th>
+<th>Arquivo de configuração</th>
+<th>Destino</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Frontend, mapas e gateway</td>
+<td><code>wrangler.jsonc</code></td>
+<td>Cloudflare Pages</td>
+</tr>
+<tr>
+<td>Salas, WebSockets e persistência</td>
+<td><code>wrangler.backend.jsonc</code></td>
+<td>Cloudflare Worker + Durable Objects SQLite</td>
+</tr>
+<tr>
+<td>Gateway do Pages</td>
+<td><code>cloudflare/pages.ts</code> → <code>static/_worker.js</code></td>
+<td>Pages Functions, modo avançado</td>
+</tr>
+<tr>
+<td>Backend</td>
+<td><code>src/cloudflare/worker.ts</code></td>
+<td>Worker</td>
+</tr>
+</tbody></table>
+<p>O servidor Node original continua em <code>src/server/</code>, para desenvolvimento convencional. O deploy Cloudflare usa a adaptação em <code>src/cloudflare/</code>; não tenta iniciar Express, processos Node ou o comando <code>npm start</code> no Pages.</p>
+<p>Referência oficial: <a href="https://developers.cloudflare.com/pages/functions/bindings/#durable-objects">https://developers.cloudflare.com/pages/functions/bindings/#durable-objects</a></p>
+<h2>1. Preparar o computador</h2>
+<p>Você precisa de uma conta Cloudflare e de <strong>Node.js 24.19.0</strong>, que inclui npm 11.9.0. O projeto aceita Node 24 a partir de 24.15.0 e npm 11.9 a 12. O arquivo <code>.nvmrc</code> fixa a versão usada na validação.</p>
+<ol>
+<li>Extraia o ZIP.</li>
+<li>Abra o terminal dentro da pasta <code>OpenFront-Cloudflare</code>, onde está <code>package.json</code>.</li>
+<li>Confira as versões e instale as dependências:</li>
+</ol>
+<pre><code class="language-sh">node --version
+npm --version
+npm ci
+</code></pre>
+<p>Esses comandos funcionam no PowerShell, no macOS e no Linux. O Wrangler já está nas dependências: não precisa instalá-lo globalmente. <code>node_modules</code> não está no ZIP e será criado por <code>npm ci</code>.</p>
+<h2>2. Escolher os nomes dos projetos</h2>
+<p>Use um nome disponível na sua conta. No exemplo, o Pages se chama <code>meu-openfront</code> e o Worker, <code>meu-openfront-backend</code>:</p>
+<pre><code class="language-sh">npm run configure:cloudflare -- meu-openfront
+</code></pre>
+<p>O comando atualiza os dois arquivos Wrangler, o service binding e as origens permitidas. Ele não publica nada.</p>
+<p>O endereço esperado é <code>https://meu-openfront.pages.dev</code>. Se a Cloudflare atribuir outro hostname porque o nome já está ocupado, coloque o endereço efetivo em <code>ALLOWED_ORIGINS</code>, em <code>wrangler.backend.jsonc</code>, e publique novamente o Worker.</p>
+<p>Para permitir também um domínio próprio:</p>
+<pre><code class="language-sh">npm run configure:cloudflare -- meu-openfront https://jogo.seudominio.com
+</code></pre>
+<p>O comando recebe URLs HTTPS completas. Ele mantém também as origens <code>http://localhost:8788</code> e <code>http://127.0.0.1:8788</code>, para testes locais.</p>
+<h2>3. Compilar o pacote</h2>
+<pre><code class="language-sh">npm run build:cloudflare
+</code></pre>
+<p>Esse comando verifica o TypeScript, compila o jogo, copia os mapas e gera:</p>
+<ul>
+<li><code>static/index.html</code>, com a configuração do navegador já preenchida;</li>
+<li><code>static/_worker.js</code>, o gateway do Pages;</li>
+<li><code>static/_routes.json</code>, com as rotas de API, salas e links de convite;</li>
+<li><code>static/_headers</code>, com as regras de cache;</li>
+<li>assets, idiomas, sons, fontes e mapas usados pelo frontend.</li>
+</ul>
+<p>O build calcula automaticamente um <code>BUILD_ID</code> e o grava no frontend e em <code>wrangler.backend.jsonc</code>. Os dois deploys precisam usar essa mesma compilação. Não edite o identificador manualmente.</p>
+<p>O ZIP já inclui um build. Execute o comando novamente depois de alterar o código ou ativar Turnstile. Alterar somente nomes de projetos e origens com <code>configure:cloudflare</code> não exige recompilar o JavaScript, porque o acesso ao backend usa a origem do site.</p>
+<h2>4. Autenticar e criar o Pages</h2>
+<pre><code class="language-sh">npx wrangler login
+npx wrangler pages project create meu-openfront --production-branch main
+</code></pre>
+<p>O login abre o navegador para autorizar o Wrangler na sua conta. Se você tiver várias contas Cloudflare, selecione a mesma conta para os dois projetos. Se o Pages já existir com esse nome, pule somente o comando de criação.</p>
+<p>Este caminho cria um projeto <strong>Direct Upload</strong>. A Cloudflare não permite convertê-lo depois para Git integration; para isso, crie outro projeto com integração Git. A alternativa Git está descrita abaixo.</p>
+<h2>5. Publicar primeiro o Worker</h2>
+<pre><code class="language-sh">npm run deploy:backend
+</code></pre>
+<p>O Wrangler publica o backend e aplica a migração <code>v1</code>, criando os namespaces SQLite das classes <code>GameRoom</code> e <code>LobbyDirectory</code>.</p>
+<p>Não é necessário criar D1, R2, KV ou um banco externo. Não remova ou renomeie a migração <code>v1</code> depois da primeira publicação. Para futuras mudanças no armazenamento, adicione novas migrações.</p>
+<p>No painel <strong>Workers &amp; Pages</strong>, confira o Worker <code>meu-openfront-backend</code> e seus bindings:</p>
+<table>
+<thead>
+<tr>
+<th>Binding</th>
+<th>Classe</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>ROOMS</code></td>
+<td><code>GameRoom</code></td>
+</tr>
+<tr>
+<td><code>DIRECTORY</code></td>
+<td><code>LobbyDirectory</code></td>
+</tr>
+</tbody></table>
+<p>As variáveis <code>BUILD_ID</code> e <code>ALLOWED_ORIGINS</code> são fornecidas pelo arquivo Wrangler. O backend funciona no modo de convidados, sem chave da API oficial do OpenFront.</p>
+<h2>6. Publicar o frontend no Pages</h2>
+<pre><code class="language-sh">npm run deploy:pages
+</code></pre>
+<p>Esse comando envia o conteúdo de <code>static/</code> para a branch de produção <code>main</code>. Ele lê automaticamente <code>wrangler.jsonc</code>, na raiz da pasta.</p>
+<p>No projeto Pages, confira em <strong>Settings → Bindings</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Tipo</th>
+<th>Nome da variável</th>
+<th>Serviço</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Service binding</td>
+<td><code>BACKEND</code></td>
+<td><code>meu-openfront-backend</code></td>
+</tr>
+</tbody></table>
+<p>O binding já está declarado em <code>wrangler.jsonc</code>. Se precisar ajustá-lo pelo painel, salve e faça um novo deploy do Pages para que a alteração tenha efeito. Para usar ambientes Preview, configure o binding também nesse ambiente.</p>
+<p>Após a configuração inicial, você pode compilar e publicar os dois projetos com:</p>
+<pre><code class="language-sh">npm run deploy:cloudflare
+</code></pre>
+<p>Esse comando executa, em sequência: build → Worker → Pages. Ele não cria um Pages inexistente; faça o passo de criação na primeira instalação.</p>
+<h2>7. Conferir a instalação e abrir uma partida</h2>
+<p>Abra:</p>
+<pre><code class="language-text">https://meu-openfront.pages.dev/api/health
+</code></pre>
+<p>A resposta deve conter <code>ok: true</code>, <code>backend: &quot;Durable Objects&quot;</code> e o <code>build</code> atual. Isso confirma que o Pages alcança o Worker.</p>
+<p>Depois:</p>
+<ol>
+<li>Abra <code>https://meu-openfront.pages.dev</code> e escolha um nome de jogador.</li>
+<li>Use <strong>Criar</strong> para abrir uma sala, configure o mapa e o modo estratégico.</li>
+<li>Copie o link de convite e abra-o em outro navegador ou computador.</li>
+<li>Inicie a partida pelo navegador do anfitrião.</li>
+<li>Confirme que ambos veem as mesmas ações. Desconecte e reconecte o segundo jogador para conferir a recuperação dos turnos.</li>
+</ol>
+<p>Para testar sozinho, use <strong>Solo</strong>. As salas podem ser divulgadas na lista pública pelo anfitrião. Não há matchmaking ranqueado, contas oficiais, compras ou ranking nesta distribuição: esses serviços dependem da API oficial, ausente no código enviado. Os atalhos principais dessas funções foram ocultados no build Cloudflare.</p>
+<p>Cada perfil de navegador recebe um identificador de convidado persistido localmente. Duas abas no mesmo perfil compartilham a identidade; a conexão mais nova substitui a anterior. Para dois jogadores no mesmo computador, use perfis diferentes, outro navegador ou uma janela privada separada.</p>
+<h2>Domínio próprio</h2>
+<ol>
+<li>No Pages, abra <strong>Custom domains</strong>, adicione <code>jogo.seudominio.com</code> e conclua a configuração DNS indicada pela Cloudflare.</li>
+<li>Permita a origem no Worker:</li>
+</ol>
+<pre><code class="language-sh">npm run configure:cloudflare -- meu-openfront https://jogo.seudominio.com
+npm run deploy:backend
+</code></pre>
+<ol start="3">
+<li>Abra o site pelo novo domínio e confira <code>/api/health</code> e a criação de salas.</li>
+</ol>
+<p>Mantenha os endereços que deseja usar em <code>ALLOWED_ORIGINS</code>, separados por vírgula. O projeto usa uma lista explícita; não usa <code>*</code> para permitir WebSockets de qualquer site.</p>
+<p>URLs de preview, como <code>branch.meu-openfront.pages.dev</code>, também precisam ser permitidas explicitamente. Para testar uma versão diferente do jogo, use um par separado de projetos Pages/Worker: misturar builds diferentes no mesmo backend gera incompatibilidade de protocolo.</p>
+<h2>Alternativa: Pages com integração Git</h2>
+<p>Se você prefere publicar o frontend automaticamente a cada push, escolha Git integration ao criar o Pages, em vez de Direct Upload.</p>
+<ol>
+<li>Execute <code>configure:cloudflare</code> com os nomes definitivos e envie o conteúdo da pasta para um repositório seu.</li>
+<li>Conecte esse repositório ao Pages.</li>
+<li>Configure:</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Valor</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Framework preset</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Root directory</td>
+<td>A pasta que contém <code>package.json</code>; vazio se estiver na raiz do repositório</td>
+</tr>
+<tr>
+<td>Build command</td>
+<td><code>npm run build:cloudflare</code></td>
+</tr>
+<tr>
+<td>Build output directory</td>
+<td><code>static</code></td>
+</tr>
+<tr>
+<td>Production branch</td>
+<td><code>main</code></td>
+</tr>
+<tr>
+<td>Variável de build <code>NODE_VERSION</code></td>
+<td><code>24.19.0</code></td>
+</tr>
+</tbody></table>
+<p>O Pages instala as dependências usando o lockfile. O arquivo <code>.nvmrc</code> também informa a versão de Node. Confirme que o log mostra Node 24 e npm dentro da faixa aceita pelo projeto.</p>
+<ol start="4">
+<li>Antes do deploy do frontend, compile e publique o Worker a partir da <strong>mesma revisão de código</strong>:</li>
+</ol>
+<pre><code class="language-sh">npm ci
+npm run build:cloudflare
+npm run deploy:backend
+</code></pre>
+<ol start="5">
+<li>Garanta que o binding <code>BACKEND</code> aponta para esse Worker.</li>
+</ol>
+<p>A integração Git do Pages <strong>não publica o Worker separado automaticamente</strong>. Para automatizar ambos, configure sua própria pipeline com a sequência usada em <code>deploy:cloudflare</code>, usando os secrets <code>CLOUDFLARE_API_TOKEN</code> e <code>CLOUDFLARE_ACCOUNT_ID</code>. Guarde os valores no serviço de CI, não no repositório. Não use os workflows antigos de publicação do projeto original como configuração da sua conta.</p>
+<h2>Por que não arrastar este ZIP inteiro para o painel?</h2>
+<p>Este ZIP é um pacote de projeto. Ele inclui fontes, testes e configurações, além do build. O Pages precisa receber <strong>o conteúdo de <code>static/</code></strong>, e o Worker precisa de um deploy separado.</p>
+<p>A Cloudflare aceita ZIP de assets no fluxo drag and drop, inclusive <code>_worker.js</code>, mas esse método tem limite de 1.000 arquivos. Este build inclui mais de 2.000 arquivos por causa dos mapas, idiomas e assets. O Wrangler suporta 20.000 arquivos e é o caminho indicado para este pacote.</p>
+<p>O limite por arquivo do Pages é 25 MiB. O build verifica automaticamente esses limites; os assets incluídos cabem neles. Não há necessidade de R2 para os mapas deste pacote.</p>
+<p>Portanto, mantenha um só ZIP para distribuir o projeto, extraia-o e use os comandos de deploy. Não envie o código-fonte inteiro como se fosse uma pasta de assets.</p>
+<h2>Testar localmente e na rede LAN</h2>
+<p>Compile primeiro:</p>
+<pre><code class="language-sh">npm ci
+npm run build:cloudflare
+</code></pre>
+<p>Deixe três terminais abertos na mesma pasta.</p>
+<p><strong>Terminal 1 — backend local:</strong></p>
+<pre><code class="language-sh">npm run dev:backend:cloudflare
+</code></pre>
+<p><strong>Terminal 2 — Pages local:</strong></p>
+<pre><code class="language-sh">npm run dev:pages
+</code></pre>
+<p>Abra <code>http://localhost:8788</code>. O Wrangler resolve o service binding para o Worker local. Os dados locais ficam no armazenamento de desenvolvimento do Wrangler, separados da sua conta em produção.</p>
+<p><strong>Terminal 3 — verificações:</strong></p>
+<pre><code class="language-sh">npm run test:cloudflare
+npm run test:cloudflare:integration
+</code></pre>
+<p>O primeiro comando testa estratégia, protocolo, salas, persistência e interface sem abrir servidores. O segundo usa os dois servidores já em execução e testa proxy, criação de sala, WebSockets, início, turnos compartilhados e reconexão. Se Turnstile estiver ativado, esse teste automático de convidados sem CAPTCHA precisa ser executado em um ambiente de teste sem o secret de Turnstile.</p>
+<p>Para LAN, os comandos de desenvolvimento já escutam em <code>0.0.0.0</code>. Descubra o IP do computador anfitrião, por exemplo <code>192.168.1.50</code>, e adicione a origem local em <code>ALLOWED_ORIGINS</code> de <code>wrangler.backend.jsonc</code>:</p>
+<pre><code class="language-text">http://192.168.1.50:8788
+</code></pre>
+<p>Mantenha as demais origens e reinicie o backend local. Libere a porta 8788 no firewall local e abra <code>http://192.168.1.50:8788</code> nos demais computadores da mesma rede. O navegador acessa o Pages local; não precisa acessar diretamente a porta 8787.</p>
+<p>O servidor Node original também continua disponível com <code>npm run dev:host</code>. Esse comando usa a infraestrutura Node/Vite convencional e normalmente abre o frontend na porta 9000; confira o endereço impresso no terminal. A implantação Cloudflare não usa esse comando.</p>
+<h2>Turnstile opcional</h2>
+<p>O pacote vem com Turnstile desativado, permitindo começar sem uma configuração extra. Para ativá-lo:</p>
+<ol>
+<li>Crie um widget Turnstile e permita os hostnames do seu Pages e domínio próprio.</li>
+<li>Defina <code>TURNSTILE_SITE_KEY</code> no ambiente de build. Em integração Git, use as variáveis do projeto Pages. Para build local no PowerShell:</li>
+</ol>
+<pre><code class="language-powershell">$env:TURNSTILE_SITE_KEY = &quot;SUA_CHAVE_PUBLICA&quot;
+npm run build:cloudflare
+</code></pre>
+<p>No Linux ou macOS:</p>
+<pre><code class="language-sh">TURNSTILE_SITE_KEY=SUA_CHAVE_PUBLICA npm run build:cloudflare
+</code></pre>
+<ol start="3">
+<li>Grave o secret no Worker:</li>
+</ol>
+<pre><code class="language-sh">npx wrangler secret put TURNSTILE_SECRET --config wrangler.backend.jsonc
+</code></pre>
+<ol start="4">
+<li>Publique Worker e Pages e teste uma entrada nova na sala.</li>
+</ol>
+<p>A chave pública fica no frontend. O secret fica somente no Worker. Não configure só o secret: sem a chave pública no build, novos jogadores não conseguem apresentar o CAPTCHA necessário.</p>
+<h2>Operação, limites e atualizações</h2>
+<ul>
+<li>O backend aceita até 32 jogadores por sala, até 48 conexões totais incluindo espectadores e até 100 salas aguardando no diretório. A criação é limitada por identidade de convidado.</li>
+<li>O anfitrião controla o início e as configurações. Salas divulgadas publicamente ficam com configurações congeladas e restrições de moderação do projeto original.</li>
+<li>O histórico de turnos fica no SQLite do Durable Object. A sala expira após duas horas desde a criação, ou após cinco minutos sem conexões depois do início.</li>
+<li>Reconexão recupera jogadores já admitidos. Um jogador novo não entra depois que a partida começou.</li>
+<li>A simulação continua nos Web Workers dos navegadores, de forma determinística. O backend ordena e distribui intenções, salva os turnos e compara hashes enviados pelos clientes. Ele não executa toda a simulação em um servidor autoritativo.</li>
+<li>Os turnos têm intervalo nominal de 100 ms. Alarms de Durable Objects não são um relógio de tempo real: atrasos da plataforma podem reduzir a cadência. A validação de latência com jogadores reais continua necessária antes de abrir o serviço em escala.</li>
+<li>Durable Objects SQLite estão disponíveis nos planos Workers Free e Paid. Partidas ativas geram alarmes e gravações frequentes; não presuma que um serviço multiplayer contínuo caberá nas cotas gratuitas. Acompanhe os limites e o consumo na sua conta.</li>
+<li>Para atualizar o código, rode <code>npm run deploy:cloudflare</code>. Mudanças de build encerram as salas antigas, protegendo o protocolo de misturas entre versões. Faça atualizações fora das partidas em andamento. Novos jogadores devem recarregar o site.</li>
+</ul>
+<p>O build inclui os recursos originais fornecidos e o modo estratégico integrado. A descrição dos sistemas, das abstrações usadas e dos itens ainda não implementados está em <code>SISTEMAS_IMPLEMENTADOS.md</code>.</p>
+<h2>Solução de problemas</h2>
+<table>
+<thead>
+<tr>
+<th>Sintoma</th>
+<th>Verificação e correção</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>missing_BACKEND_binding</code>, HTTP 503</td>
+<td>Confira o service binding <code>BACKEND</code> no Pages, o nome do Worker e o ambiente Production/Preview; faça novo deploy do Pages.</td>
+</tr>
+<tr>
+<td>HTTP 403, <code>origin_not_allowed</code></td>
+<td>Adicione o hostname efetivo do site a <code>ALLOWED_ORIGINS</code> e publique novamente o Worker. Use a origem completa, com protocolo e porta quando houver.</td>
+</tr>
+<tr>
+<td><code>version_mismatch</code>, HTTP 409</td>
+<td>Recompile e publique os dois projetos a partir da mesma revisão; recarregue os navegadores e crie uma nova sala.</td>
+</tr>
+<tr>
+<td>Página abre, multiplayer não funciona</td>
+<td>Confira <code>/api/health</code>, o binding e o deploy do Worker. Um site com só assets não coordena salas multiplayer.</td>
+</tr>
+<tr>
+<td>CAPTCHA recusado</td>
+<td>Confira hostname permitido, chave pública no build e <code>TURNSTILE_SECRET</code> no Worker.</td>
+</tr>
+<tr>
+<td><code>EBADENGINE</code> em <code>npm ci</code></td>
+<td>Use Node 24.19.0 e npm 11.9.0 ou outra versão dentro dos intervalos de <code>package.json</code>.</td>
+</tr>
+<tr>
+<td>Nome do projeto indisponível</td>
+<td>Escolha outro nome, execute <code>configure:cloudflare</code>, crie o Pages com esse nome e publique ambos.</td>
+</tr>
+<tr>
+<td>Segundo jogador substitui o primeiro</td>
+<td>Use outro perfil de navegador; abas do mesmo perfil compartilham a identidade de convidado.</td>
+</tr>
+<tr>
+<td>Sala não aparece na lista</td>
+<td>O anfitrião precisa divulgá-la publicamente antes do início; partidas iniciadas saem da lista de espera.</td>
+</tr>
+<tr>
+<td>Rede LAN não acessa</td>
+<td>Confira o IP do anfitrião, a porta 8788, o firewall e a origem LAN permitida no Worker local.</td>
+</tr>
+<tr>
+<td>Erros de cota de Durable Objects</td>
+<td>Confira os limites de requisições e armazenamento do plano na conta Cloudflare.</td>
+</tr>
+</tbody></table>
+<p>Para acompanhar logs do backend:</p>
+<pre><code class="language-sh">npx wrangler tail --config wrangler.backend.jsonc
+</code></pre>
+<h2>Referências oficiais</h2>
+<p>Consultadas em 1 de outubro de 2026:</p>
+<ul>
+<li>Bindings e limitação de Durable Objects no Pages: <a href="https://developers.cloudflare.com/pages/functions/bindings/">https://developers.cloudflare.com/pages/functions/bindings/</a></li>
+<li>Deploy com Wrangler e limites do drag and drop: <a href="https://developers.cloudflare.com/pages/get-started/direct-upload/">https://developers.cloudflare.com/pages/get-started/direct-upload/</a></li>
+<li>Pages Functions em modo avançado: <a href="https://developers.cloudflare.com/pages/functions/advanced-mode/">https://developers.cloudflare.com/pages/functions/advanced-mode/</a></li>
+<li>Configuração Wrangler para Pages: <a href="https://developers.cloudflare.com/pages/functions/wrangler-configuration/">https://developers.cloudflare.com/pages/functions/wrangler-configuration/</a></li>
+<li>Imagem de build e versão de Node: <a href="https://developers.cloudflare.com/pages/configuration/build-image/">https://developers.cloudflare.com/pages/configuration/build-image/</a></li>
+<li>Limites de assets do Pages: <a href="https://developers.cloudflare.com/pages/platform/limits/">https://developers.cloudflare.com/pages/platform/limits/</a></li>
+<li>Alarms de Durable Objects: <a href="https://developers.cloudflare.com/durable-objects/api/alarms/">https://developers.cloudflare.com/durable-objects/api/alarms/</a></li>
+<li>WebSockets em Durable Objects: <a href="https://developers.cloudflare.com/durable-objects/best-practices/websockets/">https://developers.cloudflare.com/durable-objects/best-practices/websockets/</a></li>
+<li>Planos e consumo de Durable Objects: <a href="https://developers.cloudflare.com/durable-objects/platform/pricing/">https://developers.cloudflare.com/durable-objects/platform/pricing/</a></li>
+</ul>
+<footer>OpenFront — Guia de instalação do pacote Cloudflare · 1 de outubro de 2026</footer></main></body></html>
